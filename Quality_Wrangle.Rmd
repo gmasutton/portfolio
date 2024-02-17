@@ -1,0 +1,189 @@
+---
+title: "Quality"
+output: pdf_document
+date: "2023-06-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Preparation
+##Load Packages
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(Lab.Data.Prep)
+```
+
+##Load Data
+```{r}
+baseline_raw<-Lab.Data.Prep::extract("Q",c(1:40),filepath = '/Users/admin/Documents/Quality/Raw/Baseline/')
+
+baseline_raw<-compact(baseline_raw)
+
+p2_raw<-Lab.Data.Prep::extract("Q",c(1:40),filepath = '/Users/admin/Documents/Quality/Raw/Alt/')
+
+p2_raw<-compact(p2_raw)
+
+p3_raw<-Lab.Data.Prep::extract("Q",c(1:40),filepath = '/Users/admin/Documents/Quality/Raw/Extinction/')
+
+p3_raw<-compact(p3_raw)
+
+```
+
+
+##Load Functions
+```{r}
+mpc_b<-function(x, array) {
+  # parsing text array into a data frame
+  if (stringr::str_detect(array, "[:upper:]") == FALSE) {
+    array <- toupper(array)
+  }
+
+  startarray <- paste(array, ":", sep = "")
+  endarray <- paste(LETTERS[which(LETTERS == array) + 1L], ":", sep = "")
+  new_vec <- vector("list", length(x))
+for (c in seq_along(x)) {
+    text_data <- data.frame()
+    text_data <- rbind(text_data, x[[c]])
+
+    suppressWarnings(split_data <- tidyr::separate(text_data,
+      col = 1,
+      into = c(
+        "Col1", "Col2", "Col3", "Col4", "Col5",
+        "Col6", "Col7"
+      ),
+      sep = " +"
+    ))
+    id <- split_data[3, 2]
+    start_row <- which(split_data$Col1 == startarray)
+    end_row <- which(split_data$Col1 == endarray)
+    filtered_data <- dplyr::filter(
+      split_data,
+      dplyr::row_number() %in% (start_row + 1):(end_row - 1)
+    )
+    wide_data <- data.frame()
+    col_index <- 1
+    for (i in seq_len(nrow(filtered_data))) {
+      for (j in 3:7) {
+        wide_data[1, col_index] <- filtered_data[i, j]
+        col_index <- col_index + 1
+      }
+    }
+   wide_data<-wide_data[ , colSums(is.na(wide_data))==0]
+   wide_data<-wide_data %>% dplyr::mutate_if(is.character,as.numeric)
+
+    colnames(wide_data) <- paste(array,c(0:(ncol(wide_data)-1)), sep = "")
+    new_vec[[c]] <- wide_data
+  }
+
+  # merge data frames from list into one data frame
+  merged_df <- do.call(rbind, Map(cbind, session = seq_along(new_vec), new_vec))
+  merged_df$id <- id
+  #reorder columns so id is visible
+  merged_df<-merged_df[,c(ncol(merged_df),1:ncol(merged_df)-1)]
+  return(merged_df)
+}
+```
+
+#Clean and Merge Data Frames for Each Phase
+```{r}
+#extract B array
+baseline_raw_b<-list()
+for (i in 1:length(baseline_raw)) {
+  baseline_raw_b[[i]]<-mpc_b(baseline_raw[[i]],"b")
+  print(i)
+}
+#merge all subjects into a single df
+baseline<-do.call("rbind", baseline_raw_b)
+baseline<-baseline[,c(1:3,6,11,15)]
+#rename columns
+colnames(baseline)[which(names(baseline) == 'B0')]<-"session_time"
+colnames(baseline)[which(names(baseline) == 'B3')]<-"target"
+colnames(baseline)[which(names(baseline) == 'B12')]<-"alt"
+colnames(baseline)[which(names(baseline) == 'B8')]<-"foods"
+#convert session time from centiseconds to minutes
+baseline$session_time<-baseline$session_time/6000
+#calculate rates
+baseline$target_rate<-baseline$target/baseline$session_time
+baseline$alt_rate<-baseline$alt/baseline$session_time
+baseline$food_rate<-baseline$foods/baseline$session_time
+baseline$phase<-1
+
+
+save(baseline,
+     file = "/Users/admin/Documents/Quality/quality_baseline.RData")
+
+```
+
+```{r}
+p2_raw_b<-list()
+for (i in 1:length(p2_raw)) {
+  p2_raw_b[[i]]<-mpc_b(p2_raw[[i]],"b")
+  print(i)
+}
+
+p2<-do.call("rbind", p2_raw_b)
+p2<-p2[,c(1:3,6,15,17)]
+colnames(p2)[which(names(p2) == 'B0')]<-"session_time"
+colnames(p2)[which(names(p2) == 'B3')]<-"target"
+colnames(p2)[which(names(p2) == 'B12')]<-"alt"
+colnames(p2)[which(names(p2) == 'B14')]<-"foods"
+p2$session_time<-p2$session_time/6000
+p2$target_rate<-p2$target/p2$session_time
+p2$alt_rate<-p2$alt/p2$session_time
+p2$food_rate<-p2$foods/p2$session_time
+p2$phase<-2
+
+
+save(p2,
+     file = "/Users/admin/Documents/Quality/quality_p2.RData")
+```
+
+```{r}
+p3_raw_b<-list()
+for (i in 1:length(p3_raw)) {
+  p3_raw_b[[i]]<-mpc_b(p3_raw[[i]],"b")
+  print(i)
+}
+
+p3<-do.call("rbind", p3_raw_b)
+p3<-p3[,c(1:3,6,15,17)]
+colnames(p3)[which(names(p3) == 'B0')]<-"session_time"
+colnames(p3)[which(names(p3) == 'B3')]<-"target"
+colnames(p3)[which(names(p3) == 'B12')]<-"alt"
+colnames(p3)[which(names(p3) == 'B14')]<-"foods"
+p3$session_time<-p3$session_time/6000
+p3$target_rate<-p3$target/p3$session_time
+p3$alt_rate<-p3$alt/p3$session_time
+p3$food_rate<-p3$foods/p3$session_time
+p3$phase<-3
+
+
+save(p3,
+     file = "/Users/admin/Documents/Quality/quality_p3.RData")
+```
+
+#Merge all Phases, Assign Groups
+```{r}
+quality_all<-rbind(baseline, p2, p3)
+
+#assign groups
+ss<-c("Q2","Q11","Q15","Q21","Q22","Q32","Q34","Q35")
+quality_all$group[quality_all$id %in% ss]<-"ss"
+
+sp<-c("Q3","Q4","Q5","Q13","Q14","Q23","Q24","Q25","Q31","Q33")
+quality_all$group[quality_all$id %in% sp]<-"sp"
+
+ps<-c("Q8","Q9","Q10","Q19","Q20","Q26","Q27","Q28","Q39","Q40")
+quality_all$group[quality_all$id %in% ps]<-"ps"
+
+pp<-c("Q7","Q6","Q16","Q17","Q18","Q30","Q37","Q38")
+quality_all$group[quality_all$id %in% pp]<-"pp"
+quality_all$i_group[quality_all$group %in% c("ss", "sp")] <- "s"
+quality_all$i_group[quality_all$group %in% c("pp", "ps")] <- "p"
+save(quality_all,
+     file = "/Users/admin/Documents/Quality/quality_all.RData")
+```
+
