@@ -1,0 +1,163 @@
+-- Count Unique Sites
+SELECT 
+COUNT(DISTINCT Source_ID) AS unique,
+COUNT(Source_ID) AS total,
+COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Code)) AS unique_site_county_rural
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_mental_health`
+WHERE State_Abbr = "MA" AND Status_Code = "D"
+
+SELECT 
+COUNT(DISTINCT Source_ID) AS unique,
+COUNT(Source_ID) AS total,
+COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Code)) AS unique_site_county_rural
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_dental_health`
+WHERE State_Abbr = "MA" AND Status_Code = "D"
+
+SELECT 
+COUNT(DISTINCT Source_ID) AS unique,
+COUNT(Source_ID) AS total,
+COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Code)) AS unique_site_county_rural
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_primary_care`
+WHERE State_Abbr = "MA" AND Status_Code = "D"
+
+--Find Mental Health Duplicates
+-- Site 7258157764 is located in both Middlesex and Suffolk County
+With duplicates AS(SELECT DISTINCT Source_ID,
+                County_Name,
+                Rural_Status_Code
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_mental_health`
+WHERE State_Abbr = "MA" AND Status_Code = "D" AND Source_ID IN (
+SELECT Source_ID
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_mental_health`
+GROUP BY Source_ID
+HAVING COUNT(*) >1
+) 
+)
+SELECT Source_ID, 
+       County_Name,
+       Rural_Status_Code
+FROM duplicates
+WHERE Source_ID IN
+  (SELECT Source_ID FROM duplicates GROUP BY Source_ID HAVING COUNT(*) > 1)
+ORDER BY 1,2
+
+--Find Dental Health Duplicates
+-- Sites 6253925222 and 6259992522 have mixed rural status 
+With duplicates AS(SELECT DISTINCT Source_ID,
+                County_Name,
+                Rural_Status_Code
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_dental_health`
+WHERE State_Abbr = "MA" AND Status_Code = "D" AND Source_ID IN (
+SELECT Source_ID
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_dental_health`
+GROUP BY Source_ID
+HAVING COUNT(*) >1
+) 
+)
+SELECT Source_ID, 
+       County_Name,
+       Rural_Status_Code
+FROM duplicates
+WHERE Source_ID IN
+  (SELECT Source_ID FROM duplicates GROUP BY Source_ID HAVING COUNT(*) > 1)
+ORDER BY 1,2
+
+
+--Find Primary Care Duplicates
+-- Sites 1251596591,1252540653, and 1256519832 are located in multiple counties
+-- Sites 1251596591, 1252349512, and 1258628401 are of mixed rural status
+With duplicates AS(SELECT DISTINCT Source_ID,
+                County_Name,
+                Rural_Status_Code
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_primary_care`
+WHERE State_Abbr = "MA" AND Status_Code = "D" AND Source_ID IN (
+SELECT Source_ID
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_primary_care`
+WHERE State_Abbr = "MA" AND Status_Code = "D"
+GROUP BY Source_ID
+HAVING COUNT(*) >1
+) 
+)
+SELECT Source_ID, 
+       County_Name,
+       Rural_Status_Code
+FROM duplicates
+WHERE Source_ID IN
+  (SELECT Source_ID FROM duplicates GROUP BY Source_ID HAVING COUNT(*) > 1)
+ORDER BY 1,2
+
+-- Create Clean Table
+CREATE TABLE `trusty-splice-384223.HPSA_proj.cleaned_all` AS SELECT 
+DISTINCT Source_ID,
+Source_Name,
+County_Name,
+Status_Code,
+Degree_of_Shortage,
+Designation_Date,
+Designation_Pop,
+Estimated_Served_Pop,
+Estimated_Underserved_Pop,
+HPSA_Score,
+Provider_Type,
+Rural_Status_Code
+"mental" AS hpsa_type
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_mental_health`
+WHERE State_Abbr = "MA"AND CONCAT(Source_ID, "_",County_Name)<>"7258157764_Suffolk"
+AND Status_Code = "D"
+UNION ALL
+-- Cleaned Dental Health HPSA 
+SELECT 
+DISTINCT Source_ID,
+Source_Name,
+County_Name,
+Status_Code,
+Degree_of_Shortage,
+Designation_Date,
+Designation_Pop,
+Estimated_Served_Pop,
+Estimated_Underserved_Pop,
+HPSA_Score,
+Provider_Type,
+Rural_Status_Code
+"dental" AS hpsa_type
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_dental_health`
+WHERE State_Abbr = "MA"AND Status_Code = "D"
+UNION ALL
+-- Cleaned Primary Care HPSA with Duplicate Sites Removed
+SELECT 
+DISTINCT Source_ID,
+Source_Name,
+County_Name,
+Status_Code,
+Degree_of_Shortage,
+Designation_Date,
+Designation_Pop,
+Estimated_Served_Pop,
+Estimated_Underserved_Pop,
+HPSA_Score,
+Provider_Type,
+Rural_Status_Code,
+"primary" AS hpsa_type
+FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_primary_care`
+WHERE State_Abbr = "MA"AND CONCAT(Source_ID, "_",County_Name) NOT IN ("1256519832_Suffolk","1252540653_Hampshire","1251596591_Franklin")
+AND Status_Code = "D"
+
+-- Determine proportion of population that lives in an HPSA
+SELECT
+  hpsa_type,
+SUM(Designation_Pop) AS total_pop_designated,
+(SUM(Designation_Pop)/6982000)*100 AS percent_pop_designated,
+SUM(Estimated_Underserved_Pop) AS total_pop_underserved,
+(SUM(Estimated_Underserved_Pop)/6982000)*100 AS percent_pop_underserved
+FROM `trusty-splice-384223.HPSA_proj.cleaned_all`
+GROUP BY hpsa_type
+
+--Total Number of HPSA sites, HPSA score
+SELECT
+hpsa_type,
+County_Name,
+Count(Source_ID) AS number_of_sites,
+AVG(HPSA_Score) AS average_hpsa_score
+FROM `trusty-splice-384223.HPSA_proj.cleaned_all`
+GROUP BY hpsa_type, County_Name
+
