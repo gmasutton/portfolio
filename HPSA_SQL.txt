@@ -2,21 +2,21 @@
 SELECT 
 COUNT(DISTINCT Source_ID) AS unique,
 COUNT(Source_ID) AS total,
-COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Code)) AS unique_site_county_rural
+COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Desc)) AS unique_site_county_rural
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_mental_health`
 WHERE State_Abbr = "MA" AND Status_Code = "D"
 
 SELECT 
 COUNT(DISTINCT Source_ID) AS unique,
 COUNT(Source_ID) AS total,
-COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Code)) AS unique_site_county_rural
+COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Desc)) AS unique_site_county_rural
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_dental_health`
 WHERE State_Abbr = "MA" AND Status_Code = "D"
 
 SELECT 
 COUNT(DISTINCT Source_ID) AS unique,
 COUNT(Source_ID) AS total,
-COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Code)) AS unique_site_county_rural
+COUNT(DISTINCT CONCAT(Source_ID, '_', County_Name, '_',Rural_Status_Desc)) AS unique_site_county_rural
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_primary_care`
 WHERE State_Abbr = "MA" AND Status_Code = "D"
 
@@ -24,7 +24,7 @@ WHERE State_Abbr = "MA" AND Status_Code = "D"
 -- Site 7258157764 is located in both Middlesex and Suffolk County
 With duplicates AS(SELECT DISTINCT Source_ID,
                 County_Name,
-                Rural_Status_Code
+                Rural_Status_Desc
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_mental_health`
 WHERE State_Abbr = "MA" AND Status_Code = "D" AND Source_ID IN (
 SELECT Source_ID
@@ -35,7 +35,7 @@ HAVING COUNT(*) >1
 )
 SELECT Source_ID, 
        County_Name,
-       Rural_Status_Code
+       Rural_Status_Desc
 FROM duplicates
 WHERE Source_ID IN
   (SELECT Source_ID FROM duplicates GROUP BY Source_ID HAVING COUNT(*) > 1)
@@ -45,7 +45,7 @@ ORDER BY 1,2
 -- Sites 6253925222 and 6259992522 have mixed rural status 
 With duplicates AS(SELECT DISTINCT Source_ID,
                 County_Name,
-                Rural_Status_Code
+                Rural_Status_Desc
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_dental_health`
 WHERE State_Abbr = "MA" AND Status_Code = "D" AND Source_ID IN (
 SELECT Source_ID
@@ -56,7 +56,7 @@ HAVING COUNT(*) >1
 )
 SELECT Source_ID, 
        County_Name,
-       Rural_Status_Code
+       Rural_Status_Desc
 FROM duplicates
 WHERE Source_ID IN
   (SELECT Source_ID FROM duplicates GROUP BY Source_ID HAVING COUNT(*) > 1)
@@ -68,7 +68,7 @@ ORDER BY 1,2
 -- Sites 1251596591, 1252349512, and 1258628401 are of mixed rural status
 With duplicates AS(SELECT DISTINCT Source_ID,
                 County_Name,
-                Rural_Status_Code
+                Rural_Status_Desc
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_primary_care`
 WHERE State_Abbr = "MA" AND Status_Code = "D" AND Source_ID IN (
 SELECT Source_ID
@@ -80,7 +80,7 @@ HAVING COUNT(*) >1
 )
 SELECT Source_ID, 
        County_Name,
-       Rural_Status_Code
+       Rural_Status_Desc
 FROM duplicates
 WHERE Source_ID IN
   (SELECT Source_ID FROM duplicates GROUP BY Source_ID HAVING COUNT(*) > 1)
@@ -92,17 +92,14 @@ DISTINCT Source_ID,
 Source_Name,
 County_Name,
 Status_Code,
-Degree_of_Shortage,
-Designation_Date,
 Designation_Pop,
-Estimated_Served_Pop,
 Estimated_Underserved_Pop,
 HPSA_Score,
 Provider_Type,
-Rural_Status_Code
+Rural_Status_Desc AS Rural_Status,
 "mental" AS hpsa_type
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_mental_health`
-WHERE State_Abbr = "MA"AND CONCAT(Source_ID, "_",County_Name)<>"7258157764_Suffolk"
+WHERE State_Abbr = "MA"AND CONCAT(Source_ID, "_",County_Name)<>'7258157764_Suffolk'
 AND Status_Code = "D"
 UNION ALL
 -- Cleaned Dental Health HPSA 
@@ -111,17 +108,18 @@ DISTINCT Source_ID,
 Source_Name,
 County_Name,
 Status_Code,
-Degree_of_Shortage,
-Designation_Date,
 Designation_Pop,
-Estimated_Served_Pop,
 Estimated_Underserved_Pop,
 HPSA_Score,
 Provider_Type,
-Rural_Status_Code
+CASE 
+  WHEN Rural_Status_Desc = 'Non-Rural' AND Source_ID IN ('6253925222','6259992522')
+  THEN 'Mixed'
+  ELSE Rural_Status_Desc
+  END AS Rural_Status,
 "dental" AS hpsa_type
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_dental_health`
-WHERE State_Abbr = "MA"AND Status_Code = "D"
+WHERE State_Abbr = "MA"AND Status_Code = "D" AND CONCAT(Source_ID, "_",Rural_Status_Desc) NOT IN ('6253925222_Rural','6259992522_Rural')
 UNION ALL
 -- Cleaned Primary Care HPSA with Duplicate Sites Removed
 SELECT 
@@ -129,35 +127,18 @@ DISTINCT Source_ID,
 Source_Name,
 County_Name,
 Status_Code,
-Degree_of_Shortage,
-Designation_Date,
 Designation_Pop,
-Estimated_Served_Pop,
 Estimated_Underserved_Pop,
 HPSA_Score,
 Provider_Type,
-Rural_Status_Code,
+CASE 
+  WHEN Rural_Status_Desc = 'Non-Rural' AND Source_ID IN ('1251596591', '1252349512', '1258628401')
+  THEN 'Mixed'
+  ELSE Rural_Status_Desc
+  END AS Rural_Status,
 "primary" AS hpsa_type
 FROM `bigquery-public-data.sdoh_hrsa_shortage_areas.hpsa_primary_care`
-WHERE State_Abbr = "MA"AND CONCAT(Source_ID, "_",County_Name) NOT IN ("1256519832_Suffolk","1252540653_Hampshire","1251596591_Franklin")
-AND Status_Code = "D"
-
--- Determine proportion of population that lives in an HPSA
-SELECT
-  hpsa_type,
-SUM(Designation_Pop) AS total_pop_designated,
-(SUM(Designation_Pop)/6982000)*100 AS percent_pop_designated,
-SUM(Estimated_Underserved_Pop) AS total_pop_underserved,
-(SUM(Estimated_Underserved_Pop)/6982000)*100 AS percent_pop_underserved
-FROM `trusty-splice-384223.HPSA_proj.cleaned_all`
-GROUP BY hpsa_type
-
---Total Number of HPSA sites, HPSA score
-SELECT
-hpsa_type,
-County_Name,
-Count(Source_ID) AS number_of_sites,
-AVG(HPSA_Score) AS average_hpsa_score
-FROM `trusty-splice-384223.HPSA_proj.cleaned_all`
-GROUP BY hpsa_type, County_Name
-
+WHERE State_Abbr = "MA"AND CONCAT(Source_ID, "_",County_Name) NOT IN ('1256519832_Suffolk','1252540653_Hampshire','1251596591_Franklin')
+  AND CONCAT(Source_ID, "_",Rural_Status_Desc) NOT IN ('1251596591_Rural','1252349512_Rural','1258628401_Rural')
+  AND Status_Code = "D"
+ORDER BY 1
